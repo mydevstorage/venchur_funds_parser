@@ -18,15 +18,16 @@ NO_INFO_STATUS = 'No information'
 
 DATA_FOLDER = '/home/roman/real_python/web_parsing/venchur_funds_parser'
 
-PATH_TO_CHROME_DRIVER = ("web_parsing/venchur_funds_parser/"
-                         "chrome_ driver/chromedriver")
-
-PATH_TO_FIREFOX_DRIVER = ("/home/roman/real_python/web_parsing/'\
-                          'venchur_funds_parser/firefox_driver/geckodriver")
+PATH_TO_CHROME_DRIVER = ("/home/roman/real_python/web_parsing/"
+                         "venchur_funds_parser/chrome_ driver/chromedriver")
 
 user_agent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
+
+PATH_TO_FIREFOX_DRIVER = ("/home/roman/real_python/web_parsing/"
+                          "venchur_funds_parser/firefox_driver/geckodriver")
+
 # Для анализа всех данных = 14840, займет часов 11 для анализа
 AMOUNT_OF_FUNDS_FOR_PARSING = 10
 
@@ -151,11 +152,12 @@ def get_driver_chrome():
     driver = webdriver.Chrome(executable_path=PATH_TO_CHROME_DRIVER,
                               options=options)
     return driver
+# firefox_profile='/home/roman/snap/firefox/common/.mozilla/firefox/profiles.ini'
 
 
-def get_data_firefox():
+def get_driver_firefox():
 
-    options = webdriver.FireFoxOptions()
+    options = webdriver.FirefoxOptions()
     options.set_preference("general.useragent.override", user_agent)
     options.set_preference("dom.webdriver.enabled", False)
     options.headless = True
@@ -164,14 +166,17 @@ def get_data_firefox():
     return driver
 
 
-def treatment_of_data_with_browser():
+def treatment_of_data_with_browser(outer_args):
     count_of_funds = 1
     try:
-        driver = get_driver_chrome()
+        if outer_args.browser == 'chrome':
+            driver = get_driver_chrome()
+        elif outer_args.browser == 'firefox':
+            driver = get_driver_firefox()
         for page in range(0, AMOUNT_OF_FUNDS_FOR_PARSING, STEP):
             with open(f"{DATA_FOLDER}/data/all_links_{page}.json") as file:
                 all_links = json.load(file)
-            get_data_from_pages(all_links, driver, count_of_funds)
+            get_data_from_pages(all_links, driver, count_of_funds, outer_args)
     except Exception as ex:
         print(ex)
     finally:
@@ -179,7 +184,7 @@ def treatment_of_data_with_browser():
         driver.quit()
 
 
-def get_data_from_pages(all_links, driver, count_of_funds):
+def get_data_from_pages(all_links, driver, count_of_funds, outer_args):
 
     for name_fund in all_links:
 
@@ -254,13 +259,14 @@ def get_data_from_pages(all_links, driver, count_of_funds):
                     main_row_for_table.append(NO_INFO_STATUS)
                     main_row_for_table.append(NO_INFO_STATUS)
                     main_row_for_table.append(NO_INFO_STATUS)
-            # Удаление счетчика инвесторов для подготовки файла для excel & csv
-            del main_row_for_table[0]
 
-            append_data_to_csv(main_row_for_table)
-            append_data_to_excel(main_row_for_table)
-            append_data_to_database(all_names, all_roles, all_contacts,
-                                    main_row_for_table, count_of_funds)
+            if outer_args.output_format == 'csv':
+                append_data_to_csv(main_row_for_table)
+            elif outer_args.output_format == 'excel':
+                append_data_to_excel(main_row_for_table)
+            elif outer_args.output_format == 'sqlite3':
+                append_data_to_database(all_names, all_roles, all_contacts,
+                                        main_row_for_table, count_of_funds)
 
             count_of_funds += 1   # Прибавляем счетчик инвесторов (investor_id)
         except Exception as ex:
@@ -281,7 +287,7 @@ def append_data_to_database(all_names, all_roles, all_contacts,
                         focus,
                         investment_geography)
                         values(?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (main_row_for_table,))
+                    (main_row_for_table[:8],))
     con.commit()
 
     for num in range(len(all_names)):
@@ -299,14 +305,14 @@ def append_data_to_database(all_names, all_roles, all_contacts,
 
 
 def append_data_to_csv(main_row_for_table):
-
+    del main_row_for_table[0]
     with open(f"{DATA_FOLDER}/result.csv", 'a') as file:
         writer = csv.writer(file)
         writer.writerow(main_row_for_table)
 
 
 def append_data_to_excel(main_row_for_table):
-
+    del main_row_for_table[0]
     wb = load_workbook(f"{DATA_FOLDER}/result.xlsx")
     ws = wb.active
     ws.append(main_row_for_table)
@@ -314,14 +320,17 @@ def append_data_to_excel(main_row_for_table):
 
 
 def main():
-    FUNC_MAP_DATA_WRITING_HEADERS = {'csv': create_headers_in_csv_table,
-                                     'excel': create_headers_in_excel_table,
-                                     'db': create_database_tables
-                                     }
-    options = get_options()
-    FUNC_MAP_DATA_WRITING_HEADERS[options.output_format]
+    outer_args = get_options()
+
+    if outer_args.output_format == 'csv':
+        create_headers_in_csv_table()
+    elif outer_args.output_format == 'excel':
+        create_headers_in_excel_table()
+    elif outer_args.output_format == 'sqlite3':
+        create_database_tables()
+
     get_all_links()
-    treatment_of_data_with_browser()
+    treatment_of_data_with_browser(outer_args)
 
 
 if __name__ == '__main__':

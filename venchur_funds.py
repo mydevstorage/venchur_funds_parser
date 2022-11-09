@@ -14,10 +14,14 @@ from selenium.webdriver.support.wait import WebDriverWait
 
 NO_INFO_STATUS = 'No information'
 
-DATA_FOLDER = 'Parsing/Venchur_fonds/'
+DATA_FOLDER = '/home/roman/real_python/web_parsing/venchur_funds_parser'
 
-PATH_TO_WEBDRIVER = "/home/roman/python_course/Selenium_Python/"\
-                    "Chrome_ driver/chromedriver"
+PATH_TO_CHROME_DRIVER = ("web_parsing/venchur_funds_parser/"
+                         "chrome_ driver/chromedriver")
+
+user_agent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
+                         'AppleWebKit/537.36 (KHTML, like Gecko) '\
+                         'Chrome/106.0.0.0 Safari/537.36")
 # Для анализа всех данных = 14840, займет часов 11 для анализа
 AMOUNT_OF_FUNDS_FOR_PARSING = 10
 
@@ -25,11 +29,27 @@ AMOUNT_MANAGGERS_IN_EXCEL_CSV_TABLE = 10
 
 STEP = 10       # Шаг, на каждой странице по 10 фондов/ссылок
 
-COUNT_OF_FUNDS = 1
+HEADERS_RESULT_TABLE = (
+    'Name of investor',
+    'Site',
+    'Info card',
+    'Stage',
+    'Check size',
+    'Focus',
+    'Investment geography',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact'
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact',
+    'Manager name', 'Role', 'Contact')
 
 
 def get_all_links():
-    ''' Функция собирает ссылки на каждый фонд и записывает их в json файл. '''
 
     headers = {"accept": "text/css,*/*;q=0.1",
                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) '
@@ -38,21 +58,18 @@ def get_all_links():
 
     for page in range(0, AMOUNT_OF_FUNDS_FOR_PARSING, STEP):
         fund_links = {}
-        gfs = requests.get(f"https://project-valentine-api.herokuapp.com/'\
-                           'investors?page%5Blimit%5D='\
-                           '10&page%5Boffset%5D={page}",
-                           headers=headers)
-
+        gfs = requests.get(f"https://project-valentine-api.herokuapp.com/"
+                           f"investors?page%5Blimit%5D="
+                           f"10&page%5Boffset%5D={page}", headers=headers)
         s = gfs.json()
-
         for i in s['data']:
-            temp = f'https://connect.visible.vc/investors/\
-                       {i["attributes"]["slug"]}'
+            temp = (f"https://connect.visible.vc/investors/"
+                    f"{i['attributes']['slug']}")
             name = i['attributes']['name']
             fund_links[name] = temp
 
         if not os.path.exists(f"{DATA_FOLDER}/data"):
-            os.mkdir(f"{DATA_FOLDER}data")
+            os.mkdir(f"{DATA_FOLDER}/data")
 
         with open(f"{DATA_FOLDER}/data/all_links_{page}.json", "w") as file:
             json.dump(fund_links, file, indent=4, ensure_ascii=False)
@@ -64,34 +81,12 @@ def get_all_links():
 
 def create_headers_in_csv_table():
 
-    global HEADERS_RESULT_TABLE
-
-    HEADERS_RESULT_TABLE = (
-        'Name of investor',
-        'Site',
-        'Info card',
-        'Stage',
-        'Check size',
-        'Focus',
-        'Investment geography',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact'
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact',
-        'Manager name', 'Role', 'Contact')
-
     with open(f"{DATA_FOLDER}/result.csv", 'w', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(HEADERS_RESULT_TABLE)
 
 
 def create_headers_in_excel_table():
-    ''' Создание файла Excel и добавление заголовков в таблицу. '''
 
     wb = Workbook()
     ws = wb.active
@@ -101,7 +96,6 @@ def create_headers_in_excel_table():
 
 
 def create_database_tables():
-    ''' Создание базы данных, состоящей из двух связанных таблиц. '''
 
     con = sqlite3.connect(f"{DATA_FOLDER}/result.db")
     cur = con.cursor()
@@ -130,39 +124,34 @@ def create_database_tables():
     con.close()
 
 
-def treatment_of_data_with_selenium():
+def get_driver_chrome():
 
     options = webdriver.ChromeOptions()
-    options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
-                         'AppleWebKit/537.36 (KHTML, like Gecko) '\
-                         'Chrome/106.0.0.0 Safari/537.36")
+    options.add_argument(user_agent)
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.headless = True
+    driver = webdriver.Chrome(executable_path=PATH_TO_CHROME_DRIVER,
+                              options=options)
+    return driver
 
+
+def treatment_of_data_with_browser():
+    count_of_funds = 1
     try:
-        global driver
-        driver = webdriver.Chrome(executable_path=PATH_TO_WEBDRIVER,
-                                  options=options)
-
+        driver = get_driver_chrome()
         for page in range(0, AMOUNT_OF_FUNDS_FOR_PARSING, STEP):
-
             with open(f"{DATA_FOLDER}/data/all_links_{page}.json") as file:
                 all_links = json.load(file)
-
-            get_data_from_pages(all_links)
-
+            get_data_from_pages(all_links, driver, count_of_funds)
     except Exception as ex:
         print(ex)
-
     finally:
         driver.close()
         driver.quit()
 
 
-def get_data_from_pages(all_links):
-    ''' Cбор данных с каждого фонда и запись их в базу данных, CSV и Excel'''
+def get_data_from_pages(all_links, driver, count_of_funds):
 
-    global COUNT_OF_FUNDS
     for name_fund in all_links:
 
         try:
@@ -177,18 +166,19 @@ def get_data_from_pages(all_links):
             link = soup.find(class_='mr-2 text-sm leading-tight '
                                     'text-orange-600 hover:'
                                     'underline').get('href').strip(' ')
-            stage = soup.find(string=re.compile(
-                             'Stage')).find_next('span').text.replace(
-                             '\n', '').replace(' ', '')
-            check = soup.find(string=re.compile(
-                             'Check size')).find_next(
-                             'span').text.replace('\n', '').replace(' ', '')
-            focus = soup.find(string=re.compile('Focus')).find_next(
-                             'span').string.replace(' ', '').replace(
-                             ',', ', ').strip('\n ')
-            i_geo = soup.find(string=re.compile(
-                             'Investment geography')).find_next(
-                             'span').text.strip().replace('\n', '')
+            stage = (soup.find(string=re.compile('Stage'))
+                         .find_next('span').text.replace('\n', '')
+                         .replace(' ', ''))
+            check = (soup.find(string=re.compile('Check size'))
+                         .find_next('span')
+                         .text.replace('\n', '')
+                         .replace(' ', ''))
+            focus = (soup.find(string=re.compile('Focus'))
+                         .find_next('span').string.replace(' ', '')
+                         .replace(',', ', ').strip('\n '))
+            i_geo = (soup.find(string=re.compile('Investment geography'))
+                         .find_next('span')
+                         .text.strip().replace('\n', ''))
 
             all_names = []
             all_roles = []
@@ -217,7 +207,7 @@ def get_data_from_pages(all_links):
                                     else NO_INFO_STATUS)
 
             main_row_for_table = [
-                    COUNT_OF_FUNDS,
+                    count_of_funds,
                     name_fund,
                     (link if link != '' else NO_INFO_STATUS),
                     all_links[name_fund],
@@ -225,11 +215,6 @@ def get_data_from_pages(all_links):
                     (check if check != '-' else NO_INFO_STATUS),
                     (focus if focus != '' else NO_INFO_STATUS),
                     (i_geo if i_geo != '' else NO_INFO_STATUS)]
-
-            append_data_to_database(all_names, all_roles, all_contacts,
-                                    main_row_for_table, COUNT_OF_FUNDS)
-
-            COUNT_OF_FUNDS += 1   # Прибавляем счетчик инвесторов (investor_id)
 
             for i in range(AMOUNT_MANAGGERS_IN_EXCEL_CSV_TABLE):
                 try:
@@ -244,15 +229,17 @@ def get_data_from_pages(all_links):
             del main_row_for_table[0]
 
             append_data_to_csv(main_row_for_table)
-
             append_data_to_excel(main_row_for_table)
+            append_data_to_database(all_names, all_roles, all_contacts,
+                                    main_row_for_table, count_of_funds)
 
+            count_of_funds += 1   # Прибавляем счетчик инвесторов (investor_id)
         except Exception as ex:
             print(ex)
 
 
 def append_data_to_database(all_names, all_roles, all_contacts,
-                            main_row_for_table, COUNT_OF_FUNDS):
+                            main_row_for_table, count_of_funds):
     con = sqlite3.connect(f"{DATA_FOLDER}/result.db")
     cur = con.cursor()
     cur.executemany('''insert into INVESTORS(
@@ -269,7 +256,7 @@ def append_data_to_database(all_names, all_roles, all_contacts,
     con.commit()
 
     for num in range(len(all_names)):
-        row_for_database_table_MANAGERS = [COUNT_OF_FUNDS, all_names[num],
+        row_for_database_table_MANAGERS = [count_of_funds, all_names[num],
                                            all_roles[num], all_contacts[num]]
         cur.executemany('''insert into MANAGERS(
                             investor_id,
@@ -291,10 +278,10 @@ def append_data_to_csv(main_row_for_table):
 
 def append_data_to_excel(main_row_for_table):
 
-    wb = load_workbook(f"{DATA_FOLDER} / result.xlsx")
+    wb = load_workbook(f"{DATA_FOLDER}/result.xlsx")
     ws = wb.active
     ws.append(main_row_for_table)
-    wb.save(f"{DATA_FOLDER} / result.xlsx")
+    wb.save(f"{DATA_FOLDER}/result.xlsx")
 
 
 def main():
@@ -303,7 +290,7 @@ def main():
     create_headers_in_csv_table()
     create_headers_in_excel_table()
     get_all_links()
-    treatment_of_data_with_selenium()
+    treatment_of_data_with_browser()
 
 
 if __name__ == '__main__':
