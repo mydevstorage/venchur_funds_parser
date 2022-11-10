@@ -11,23 +11,32 @@ import random
 import os
 import sqlite3
 from selenium.webdriver.support.wait import WebDriverWait
+from loguru import logger
+import argparse
+
+logger.add('log.log', format="[{time:HH:mm:ss}] {level} {message} ",
+           level="DEBUG",
+           rotation='30 MB', compression='zip', retention=None)
 
 NO_INFO_STATUS = 'No information'
 
 DATA_FOLDER = '/home/roman/real_python/web_parsing/venchur_funds_parser'
 
-PATH_TO_CHROME_DRIVER = ("web_parsing/venchur_funds_parser/"
-                         "chrome_ driver/chromedriver")
+PATH_TO_CHROME_DRIVER = ("/home/roman/real_python/web_parsing/"
+                         "venchur_funds_parser/chrome_ driver/chromedriver")
 
 user_agent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
-# Для анализа всех данных = 14840, займет часов 11 для анализа
-AMOUNT_OF_FUNDS_FOR_PARSING = 10
+
+PATH_TO_FIREFOX_DRIVER = ("/home/roman/real_python/web_parsing/"
+                          "venchur_funds_parser/firefox_driver/geckodriver")
+
+AMOUNT_OF_FUNDS_FOR_PARSING = 20
 
 AMOUNT_MANAGGERS_IN_EXCEL_CSV_TABLE = 10
 
-STEP = 10       # Шаг, на каждой странице по 10 фондов/ссылок
+STEP = 10
 
 HEADERS_RESULT_TABLE = (
     'Name of investor',
@@ -49,7 +58,22 @@ HEADERS_RESULT_TABLE = (
     'Manager name', 'Role', 'Contact')
 
 
+def get_options():
+    ''' Parse the arguments in the command line'''
+
+    parser = argparse.ArgumentParser()
+    HELP_INFO1 = 'choose and type [csv, excel ,db] for writing method'
+    HELP_INFO2 = 'choose and type [chrome, firefox] for browser tool'
+
+    parser.add_argument('output_format', choices=['csv', 'excel', 'sqlite3'],
+                        help=HELP_INFO1)
+    parser.add_argument('browser', choices=['chrome',
+                        'firefox'], help=HELP_INFO2)
+    return parser.parse_args()
+
+
 def get_all_links():
+    '''Downloads all links and writes it in a file '''
 
     headers = {"accept": "text/css,*/*;q=0.1",
                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) '
@@ -57,26 +81,28 @@ def get_all_links():
                'Chrome/106.0.0.0 Safari/537.36'}
 
     for page in range(0, AMOUNT_OF_FUNDS_FOR_PARSING, STEP):
-        fund_links = {}
-        gfs = requests.get(f"https://project-valentine-api.herokuapp.com/"
-                           f"investors?page%5Blimit%5D="
-                           f"10&page%5Boffset%5D={page}", headers=headers)
-        s = gfs.json()
-        for i in s['data']:
-            temp = (f"https://connect.visible.vc/investors/"
-                    f"{i['attributes']['slug']}")
-            name = i['attributes']['name']
-            fund_links[name] = temp
+        try:
+            fund_links = {}
+            gfs = requests.get(f"https://project-valentine-api.herokuapp.com/"
+                               f"investors?page%5Blimit%5D="
+                               f"10&page%5Boffset%5D={page}", headers=headers)
+            s = gfs.json()
+            for i in s['data']:
+                temp = (f"https://connect.visible.vc/investors/"
+                        f"{i['attributes']['slug']}")
+                name = i['attributes']['name']
+                fund_links[name] = temp
 
-        if not os.path.exists(f"{DATA_FOLDER}/data"):
-            os.mkdir(f"{DATA_FOLDER}/data")
+            if not os.path.exists(f"{DATA_FOLDER}/data"):
+                os.mkdir(f"{DATA_FOLDER}/data")
 
-        with open(f"{DATA_FOLDER}/data/all_links_{page}.json", "w") as file:
-            json.dump(fund_links, file, indent=4, ensure_ascii=False)
+            with open(f"{DATA_FOLDER}/data/all_links_{page}.json", "w") as f:
+                json.dump(fund_links, f, indent=4, ensure_ascii=False)
+            time.sleep(random.randint(1, 2))
 
-        time.sleep(random.randint(1, 2))
-
-        print(f'Progress ... {page}')
+            logger.debug(f'{page + 10} links are got')
+        except Exception:
+            logger.warning(f'offset number {page} was not loaded')
 
 
 def create_headers_in_csv_table():
@@ -135,33 +161,49 @@ def get_driver_chrome():
     return driver
 
 
-def treatment_of_data_with_browser():
-    count_of_funds = 1
+def get_driver_firefox():
+
+    options = webdriver.FirefoxOptions()
+    options.set_preference("general.useragent.override", user_agent)
+    options.set_preference("dom.webdriver.enabled", False)
+    options.headless = True
+    driver = webdriver.Firefox(executable_path=PATH_TO_FIREFOX_DRIVER,
+                               options=options)
+    return driver
+
+
+def treatment_of_data_with_browser(outer_args):
+    ''' Reads files with links and processes it '''
+
     try:
-        driver = get_driver_chrome()
+        if outer_args.browser == 'chrome':
+            driver = get_driver_chrome()
+        elif outer_args.browser == 'firefox':
+            driver = get_driver_firefox()
         for page in range(0, AMOUNT_OF_FUNDS_FOR_PARSING, STEP):
             with open(f"{DATA_FOLDER}/data/all_links_{page}.json") as file:
                 all_links = json.load(file)
-            get_data_from_pages(all_links, driver, count_of_funds)
+            count_of_funds = 1 + page
+            get_data_from_pages(all_links, driver, count_of_funds, outer_args)
     except Exception as ex:
-        print(ex)
+        logger.error(ex)
     finally:
         driver.close()
         driver.quit()
 
 
-def get_data_from_pages(all_links, driver, count_of_funds):
+def get_data_from_pages(all_links, driver, count_of_funds, outer_args):
+    '''Open every link and exctract data'''
 
     for name_fund in all_links:
 
         try:
             driver.get(url=all_links[name_fund])
-            time.sleep(2)
+            time.sleep(1)
             WebDriverWait(driver, 20).until(
                           lambda x: x.find_element(By.ID, "ember7"))
 
             soup = BeautifulSoup(driver.page_source, 'lxml')
-            print(f'{all_links[name_fund]} ... Готов!')
 
             link = soup.find(class_='mr-2 text-sm leading-tight '
                                     'text-orange-600 hover:'
@@ -225,21 +267,25 @@ def get_data_from_pages(all_links, driver, count_of_funds):
                     main_row_for_table.append(NO_INFO_STATUS)
                     main_row_for_table.append(NO_INFO_STATUS)
                     main_row_for_table.append(NO_INFO_STATUS)
-            # Удаление счетчика инвесторов для подготовки файла для excel & csv
-            del main_row_for_table[0]
 
-            append_data_to_csv(main_row_for_table)
-            append_data_to_excel(main_row_for_table)
-            append_data_to_database(all_names, all_roles, all_contacts,
-                                    main_row_for_table, count_of_funds)
-
-            count_of_funds += 1   # Прибавляем счетчик инвесторов (investor_id)
-        except Exception as ex:
-            print(ex)
+            if outer_args.output_format == 'csv':
+                append_data_to_csv(main_row_for_table)
+            elif outer_args.output_format == 'excel':
+                append_data_to_excel(main_row_for_table)
+            elif outer_args.output_format == 'sqlite3':
+                append_data_to_database(all_names, all_roles, all_contacts,
+                                        main_row_for_table, count_of_funds)
+            logger.info(f'{count_of_funds} {name_fund} ... DONE!')
+            count_of_funds += 1
+        except Exception:
+            logger.error(f'{name_fund}... wasnt written')
+            with open('recycle.txt', 'a') as file:
+                file.write(f'{name_fund}\n')
 
 
 def append_data_to_database(all_names, all_roles, all_contacts,
                             main_row_for_table, count_of_funds):
+
     con = sqlite3.connect(f"{DATA_FOLDER}/result.db")
     cur = con.cursor()
     cur.executemany('''insert into INVESTORS(
@@ -252,9 +298,8 @@ def append_data_to_database(all_names, all_roles, all_contacts,
                         focus,
                         investment_geography)
                         values(?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (main_row_for_table,))
+                    (main_row_for_table[:8],))
     con.commit()
-
     for num in range(len(all_names)):
         row_for_database_table_MANAGERS = [count_of_funds, all_names[num],
                                            all_roles[num], all_contacts[num]]
@@ -264,13 +309,13 @@ def append_data_to_database(all_names, all_roles, all_contacts,
                             role,
                             contacts) values(?, ?, ?, ?)''',
                         (row_for_database_table_MANAGERS,))
-
     con.commit()
     con.close()
 
 
 def append_data_to_csv(main_row_for_table):
 
+    del main_row_for_table[0]
     with open(f"{DATA_FOLDER}/result.csv", 'a') as file:
         writer = csv.writer(file)
         writer.writerow(main_row_for_table)
@@ -278,19 +323,25 @@ def append_data_to_csv(main_row_for_table):
 
 def append_data_to_excel(main_row_for_table):
 
+    del main_row_for_table[0]
     wb = load_workbook(f"{DATA_FOLDER}/result.xlsx")
     ws = wb.active
     ws.append(main_row_for_table)
     wb.save(f"{DATA_FOLDER}/result.xlsx")
 
 
+@logger.catch
 def main():
 
-    create_database_tables()
-    create_headers_in_csv_table()
-    create_headers_in_excel_table()
+    outer_args = get_options()
+    if outer_args.output_format == 'csv':
+        create_headers_in_csv_table()
+    elif outer_args.output_format == 'excel':
+        create_headers_in_excel_table()
+    elif outer_args.output_format == 'sqlite3':
+        create_database_tables()
     get_all_links()
-    treatment_of_data_with_browser()
+    treatment_of_data_with_browser(outer_args)
 
 
 if __name__ == '__main__':
