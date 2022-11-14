@@ -1,18 +1,18 @@
 import re
+import os
+import csv
+import json
 import time
+import random
+import sqlite3
+import argparse
 import requests
+from loguru import logger
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-import json
-import csv
 from openpyxl import load_workbook, Workbook
-import random
-import os
-import sqlite3
 from selenium.webdriver.support.wait import WebDriverWait
-from loguru import logger
-import argparse
 
 logger.add('log.log', format="[{time:HH:mm:ss}] {level} {message} ",
            level="DEBUG",
@@ -22,15 +22,13 @@ NO_INFO_STATUS = 'No information'
 
 DATA_FOLDER = '/home/roman/real_python/web_parsing/venchur_funds_parser'
 
-PATH_TO_CHROME_DRIVER = ("/home/roman/real_python/web_parsing/"
-                         "venchur_funds_parser/chrome_ driver/chromedriver")
+PATH_TO_CHROME_DRIVER = f'{DATA_FOLDER}/chrome_ driver/chromedriver'
 
 user_agent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
 
-PATH_TO_FIREFOX_DRIVER = ("/home/roman/real_python/web_parsing/"
-                          "venchur_funds_parser/firefox_driver/geckodriver")
+PATH_TO_FIREFOX_DRIVER = f'{DATA_FOLDER}/firefox_driver/geckodriver'
 
 AMOUNT_OF_FUNDS_FOR_PARSING = 20
 

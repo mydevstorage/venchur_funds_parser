@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 recycle.txt
+chrome_driver
+firefox_driver
+chromedriver
+geckodriver
 
 # C extensions
 *.so
